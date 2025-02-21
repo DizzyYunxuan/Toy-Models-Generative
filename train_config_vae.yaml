@@ -1,0 +1,30 @@
+Configuration_name: 20250121_train_VAE_latentSize16
+device: 'cuda'
+
+TrainingDataSetConfigs:
+  dataset_name: MNIST
+  dataset_type: Train
+  dataset_path: /media/4T/mit_6s978/data/
+  batch_size: 256
+  total_epochs: 20
+
+TestingDataSetConfigs:
+  dataset_name: MNIST
+  dataset_type: Test
+  batch_size: 10
+  dataset_path: /media/4T/mit_6s978/data/
+
+modelConfigs:
+  model_class_name: ConditionalVariationalAutoEncoder
+  input_dim: 784 # 28*28 + 128
+  hidden_dims: [128, 32, 16, 16]
+  decode_dim: -1
+  reg_coff: 1e-3
+  conditional: False
+  n_classes: 10
+  use_sigmoid: True
+
+optimizerConfigs:
+  optimizer_name: Adam
+  learning_rate: 1e-3
+  weight_decay: 1e-8

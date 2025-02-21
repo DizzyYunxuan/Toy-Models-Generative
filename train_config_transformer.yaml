@@ -1,0 +1,39 @@
+Configuration_name: 20250121_train_transformer
+device: 'cuda'
+
+TrainingDataSetConfigs:
+  dataset_name: MNIST
+  dataset_type: Train
+  dataset_path: /media/4T/mit_6s978/data/
+  batch_size: 128
+  total_epochs: 30
+  reshape_to_vector: False
+  binarize_image: False
+  Normalize: True
+  n_classes: 10
+
+TestingDataSetConfigs:
+  dataset_name: MNIST
+  dataset_type: Test
+  num_test_samples: 16
+  batch_size: 128
+  dataset_path: /media/4T/mit_6s978/data/
+  validation_interval: 5
+  reshape_to_vector: False
+  binarize_image: False
+  Normalize: True
+  n_classes: 10
+
+modelConfigs:
+  model_class_name: Transformer
+  image_channel: 1
+  image_size: 28
+  patch_size: 7
+  num_transformer: 4
+  num_head: 3
+  embed_size: 192
+  
+
+optimizerConfigs:
+  optimizer_name: Adam
+  learning_rate: 1e-3

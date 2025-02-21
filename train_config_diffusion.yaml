@@ -1,0 +1,50 @@
+Configuration_name: 20250121_train_diffusion_DDIM
+device: 'cuda'
+
+TrainingDataSetConfigs:
+  dataset_name: MNIST
+  dataset_type: Train
+  dataset_path: /media/4T/mit_6s978/data/
+  batch_size: 128
+  total_epochs: 30
+  reshape_to_vector: False
+  binarize_image: False
+  Normalize: False
+  n_classes: 10
+
+TestingDataSetConfigs:
+  dataset_name: MNIST
+  dataset_type: Test
+  num_test_samples: 16
+  batch_size: 16
+  dataset_path: /media/4T/mit_6s978/data/
+  validation_interval: 5
+  reshape_to_vector: False
+  binarize_image: False
+  Normalize: False
+  n_classes: 10
+  test_size: [20, 1, 28, 28]
+  guided_weights_list: [0.0, 0.5, 2.0]
+
+modelConfigs:
+  model_class_name: Diffusion
+  in_channels: 1
+  n_feat: 128
+  drop_prob: 0.1
+  n_classes: 10
+  sample_type: 'ddim' # ddpm or ddim
+  ddim_step: -20
+  
+  
+
+
+schedules_configs:
+  n_T: 400
+  beta1: 1e-4
+  beta2: 2e-2
+
+
+
+optimizerConfigs:
+  optimizer_name: Adam
+  learning_rate: 1e-4

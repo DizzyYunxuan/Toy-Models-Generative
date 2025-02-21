@@ -1,0 +1,38 @@
+Configuration_name: 20250121_train_unconGAN
+device: 'cuda'
+
+TrainingDataSetConfigs:
+  dataset_name: MNIST
+  dataset_type: Train
+  dataset_path: /media/4T/mit_6s978/data/
+  batch_size: 256
+  total_epochs: 500
+  reshape_to_vector: False
+  binarize_image: False
+  Normalize: True
+  n_classes: 10
+
+TestingDataSetConfigs:
+  dataset_name: MNIST
+  dataset_type: Test
+  num_test_samples: 16
+  batch_size: 16
+  dataset_path: /media/4T/mit_6s978/data/
+  validation_interval: 5
+  reshape_to_vector: False
+  binarize_image: False
+  Normalize: True
+  n_classes: 10
+
+modelConfigs:
+  model_class_name: GAN
+  with_condition: False
+  dim_z: 100
+  g_chn_num: [128, 256, 512]
+  d_chn_num: [512, 256, 128]
+  d_init_chn_num: 784 # 28*28
+
+optimizerConfigs:
+  optimizer_name: Adam
+  learning_rate: 1e-3
+  weight_decay: 1e-8
