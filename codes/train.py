@@ -1,7 +1,6 @@
-import torch
+import os
 from tqdm import tqdm
 import yaml
-import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 from util import create_model, create_dataLoader
     
@@ -14,17 +13,16 @@ def train(configs):
 
 
     # init model
-    # modelConfigs = configs['modelConfigs']
-    # optimizerConfigs = configs['optimizerConfigs']
     model = create_model(configs)
 
     # init tensorboard
     writer = SummaryWriter('expriments_tb/{}'.format(configs['Configuration_name']))
 
+    # save path
+    os.makedirs('./expriments_save/{}'.format(configs['Configuration_name']), exist_ok=True)
+
 
     total_epochs = configs['TrainingDataSetConfigs']['total_epochs']
-    
-    
     for epoch in tqdm(range(total_epochs), desc='Epochs'):
         train_batch_progress = tqdm(train_dataLoader, desc='Train_Batch', leave=False)
         for iter_idx, train_data in enumerate(train_batch_progress):

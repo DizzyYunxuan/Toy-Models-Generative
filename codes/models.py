@@ -1060,7 +1060,7 @@ class VisionTransformer_model(torch.nn.Module):
     def __init__(self, configs) -> None:
         super().__init__()
 
-
+        self.configs = configs
         modelConfigs = configs['modelConfigs']
         optimizerConfigs = configs['optimizerConfigs']
         TrainingDataSetConfigs = configs['TrainingDataSetConfigs']
@@ -1083,6 +1083,8 @@ class VisionTransformer_model(torch.nn.Module):
         self.loss_fn = torch.nn.CrossEntropyLoss()
         self.optimizer = torch.optim.Adam(params=self.vit.parameters(), 
                                      lr=float(optimizerConfigs['learning_rate']))
+        
+        self.save_model_interval = modelConfigs['save_model_interval']
         
         self.to(self.device)
 
@@ -1162,8 +1164,51 @@ class VisionTransformer_model(torch.nn.Module):
         data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
         plt.close(fig)
         tb_writer.add_image('Validation Samples', data, epoch, dataformats="HWC")
-        
 
+        if (epoch + 1) % self.save_model_interval == 0:
+            save_path = './expriments_save/{}/model_epoch_{}.pth'.format(self.configs['Configuration_name'], epoch)
+            torch.save(self.state_dict(), save_path)
+    
+    def inference(self, tb_writer, test_dataLoader):
+        self.eval()
+        correct_num = 0
+        total_num = 0
+        with torch.no_grad():
+            val_batch_progress = tqdm(test_dataLoader, desc='Val_batch', leave=False)
+            test_iter_rand = np.random.randint(0, len(test_dataLoader), 10)
+            for iter_idx, test_data in enumerate(val_batch_progress):
+                self.feed_data(test_data)
+                pred_label = self.test()
+                gt_label = test_data['label']
+                gt_label = torch.argmax(gt_label, dim=-1)
+
+                pred_label = pred_label.cpu().numpy()
+                gt_label = gt_label.numpy()
+                num_cor = np.sum((pred_label - gt_label) == 0)
+                correct_num += num_cor
+                total_num += pred_label.shape[0]
+
+                if iter_idx in test_iter_rand:
+                    fig, ax = plt.subplots(4, 4, figsize=(6, 6))
+                    for k in range(16):
+                        i = k//4
+                        j = k%4
+                        ax[i,j].cla()
+                        ax[i,j].get_yaxis().set_visible(False)
+                        ax[i,j].get_xaxis().set_visible(False)
+                        ax[i,j].imshow(self.input_x[k,:,:].data.cpu().numpy().reshape(28, 28), cmap='Greys')
+                        ax[i, j].set_title(f'Pred Class: {pred_label[k]}', fontsize=10)
+
+                    fig.canvas.draw()
+                    data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+                    data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+                    plt.close(fig)
+                    tb_writer.add_image('Validation Samples', data, iter_idx, dataformats="HWC")
+
+
+        acc = correct_num / total_num
+        tb_writer.add_scalar('Test/Accuracy', acc, -1)
+        
 
 if __name__ == '__main__':
 

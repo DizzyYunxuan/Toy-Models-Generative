@@ -1,4 +1,4 @@
-Configuration_name: 20250121_train_transformer
+Configuration_name: 20250221_train_transformer
 device: 'cuda'
 
 TrainingDataSetConfigs:
@@ -32,8 +32,12 @@ modelConfigs:
   num_transformer: 4
   num_head: 3
   embed_size: 192
+  save_model_interval: 5
   
 
 optimizerConfigs:
   optimizer_name: Adam
   learning_rate: 1e-3
+
+inferenceConfigs:
+  load_path: /home/SENSETIME/weiyunxuan1/generative_models/expriments_save/20250221_train_transformer/model_epoch_29.pth
