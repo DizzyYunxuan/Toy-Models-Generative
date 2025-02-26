@@ -47,7 +47,7 @@ class residualMaskedConv(nn.Module):
 class PixelCNN(nn.Module):
     ##################
     ### Problem 2(b): Implement PixelCNN
-    def __init__(self, num_input_c=1, num_inner_c=64, num_output_c=1, num_masked_convs=4):
+    def __init__(self, num_input_c=1, num_inner_c=64, num_output_c=1, num_masked_convs=4, useSigmoid=True):
         super(PixelCNN, self).__init__()
         
         shallow_fea = []
@@ -64,7 +64,8 @@ class PixelCNN(nn.Module):
         final_fea.append(MaskedConv2d(num_inner_c, num_inner_c, 1, 0, 'B'))
         final_fea.append(torch.nn.LeakyReLU(0.1))
         final_fea.append(MaskedConv2d(num_inner_c, num_output_c, 1, 0, 'B'))
-        final_fea.append(torch.nn.Sigmoid())
+        if useSigmoid:
+            final_fea.append(torch.nn.Sigmoid())
 
         self.sf = torch.nn.Sequential(*shallow_fea)
         self.net = torch.nn.Sequential(*net)

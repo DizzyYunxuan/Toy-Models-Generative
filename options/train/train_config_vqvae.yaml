@@ -1,0 +1,37 @@
+Configuration_name: 20250226_train_VQVAE
+device: 'cuda'
+
+TrainingDataSetConfigs:
+  dataset_name: MNIST
+  dataset_type: Train
+  dataset_path: /media/4T/mit_6s978/data/
+  batch_size: 256
+  total_epochs: 20
+  binarize_image: False
+  Normalize: False
+  reshape_to_vector: False
+  n_classes: 10
+
+TestingDataSetConfigs:
+  dataset_name: MNIST
+  dataset_type: Test
+  batch_size: 10
+  dataset_path: /media/4T/mit_6s978/data/
+  binarize_image: False
+  Normalize: False
+  reshape_to_vector: False
+  n_classes: 10
+  test_sample_size: [28, 28]
+
+modelConfigs:
+  model_class_name: VQVAE
+  input_channel: 1 
+  num_encoderLayers: 3
+  num_decoderLayers: 3
+  n_classes: 10
+  use_sigmoid: True
+
+optimizerConfigs:
+  optimizer_name: Adam
+  learning_rate: 1e-3
+  weight_decay: 1e-8

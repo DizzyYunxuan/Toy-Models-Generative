@@ -63,7 +63,6 @@ def create_dataLoader(dataSetConfigs):
         tensor_transform = transforms.Compose(tensor_transform)
 
 
-        # 
         from dataset import MNIST
         batch_size = dataSetConfigs['batch_size']
         reshape_to_vector = dataSetConfigs['reshape_to_vector']
