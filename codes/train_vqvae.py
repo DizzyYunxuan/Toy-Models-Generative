@@ -46,7 +46,7 @@ def train_vqvae(configs):
             model.optimize_parameters_pixelcnn()
             model.tb_write_losses_pixelcnn(writer, epoch * len(train_batch_progress) + iter_idx)
 
-        model.validation(writer, epoch, test_dataLoader)
+        model.validation(writer, epoch)
 
 
 with open('options/train/train_config_vqvae.yaml') as f:

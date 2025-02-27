@@ -8,6 +8,7 @@ from autoregressive_blocks import PixelCNN, ConditionalPixelCNN
 from gan_blocks import LinearSFT, Generator, Discriminator
 from diffusion_blocks import ContextUnet
 from transformers import VisionTransformer
+from vqvae_blocks import VQVAE
 import itertools
 from tqdm import tqdm
 
@@ -1224,14 +1225,20 @@ class VQVAE_model(torch.nn.Module):
 
         # image_channel, image_size, patch_size, num_transformer, num_head, embed_size, num_class
         image_channel = modelConfigs['input_channel']
-        num_encoderLayers = modelConfigs['num_encoderLayers']
-        num_decoderLayers = modelConfigs['num_decoderLayers']
+        inner_channel = modelConfigs['inner_channel']
+        output_channel = modelConfigs['output_channel']
+        num_embedding = modelConfigs['num_embedding']
         num_class = self.TrainingDataSetConfigs['n_classes']
+        conditional = self.TrainingDataSetConfigs['conditional']
 
         self.w_recon, self.w_embedding, self.w_commitment = optimizerConfigs['w_recon'], optimizerConfigs['w_embedding'], optimizerConfigs['w_commitment']
 
-        self.vqvae_module = VQVAE()
-        self.pixelcnn_module = PixelCNN()
+        self.vqvae_module = VQVAE(image_channel, inner_channel, output_channel, num_embedding, num_class, conditional)
+        # self.pixelcnn_module = PixelCNN()
+        if self.conditional:
+            self.pixelcnn_module = ConditionalPixelCNN(num_input_c=inner_channel, num_inner_c=inner_channel, num_output_c=inner_channel)
+        else:
+            self.pixelcnn_module = PixelCNN(num_input_c=inner_channel, num_inner_c=inner_channel, num_output_c=inner_channel)
 
         # init self modules and optimizers
         self.optimizer_vqvae = torch.optim.Adam(params=self.vqvae_module.parameters(), 
@@ -1254,15 +1261,16 @@ class VQVAE_model(torch.nn.Module):
     def optimize_parameters_vqvae(self):
         self.train()
 
-        ze = self.vqvae_module.encoder(self.input_x)
-        zq = self.vqvae_module.embbed(ze)
-        recon_img = self.vqvae_module.decoder(zq)
+        # ze = self.vqvae_module.encode(self.input_x)
+        # zq = self.vqvae_module.embbed(ze)
+        # recon_img = self.vqvae_module.decode(zq)
+        ze, zq, recon_img = self.vqvae_module(self.input_x)
 
         self.loss_recon = self.mse_loss(recon_img, self.input_x)
-        self.loss_embbeding = self.mse_loss(ze.detach(), zq)
+        self.loss_embedding = self.mse_loss(ze.detach(), zq)
         self.loss_commitment = self.mse_loss(ze, zq.detach())
 
-        self.loss_vqvae = self.w_recon * self.loss_recon + self.w_embedding * self.loss_embbeding + self.w_commitment * self.loss_commitment
+        self.loss_vqvae = self.w_recon * self.loss_recon + self.w_embedding * self.loss_embedding + self.w_commitment * self.loss_commitment
 
         self.optimizer_vqvae.zero_grad()
         self.loss_vqvae.backward()
@@ -1328,7 +1336,7 @@ class VQVAE_model(torch.nn.Module):
                             self.loss_pixelcnn_recont.item(),
                             iter_idx)
     
-    def validation_pixelcnn(self, tb_writer, epoch, test_dataLoader):
+    def validation_pixelcnn(self, tb_writer, epoch):
 
         target_size = self.TestingDataSetConfigs['test_sample_size']
         samples_shape = [1] + target_size # [1, 28, 28]
@@ -1369,7 +1377,7 @@ class VQVAE_model(torch.nn.Module):
             samples_flatten_img[i*28:(i+1)*28, :] = c_chunk
 
         
-        
+        tb_writer.add_image('generated_image'.format(epoch), samples_flatten_img, epoch, dataformats="HW")
 
 if __name__ == '__main__':
 
