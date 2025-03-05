@@ -1,4 +1,4 @@
-Configuration_name: 20250226_train_VQVAE
+Configuration_name: 20250226_train_VQVAE_conditional
 device: 'cuda'
 
 TrainingDataSetConfigs:
@@ -11,7 +11,9 @@ TrainingDataSetConfigs:
   Normalize: False
   reshape_to_vector: False
   n_classes: 10
-  conditional: False
+  conditional: True
+  total_vqvae_epochs: 20
+  total_pixelcnn_epochs: 20
 
 TestingDataSetConfigs:
   dataset_name: MNIST
@@ -31,8 +33,13 @@ modelConfigs:
   output_channel: 1
   num_embedding: 64  # num, dim
   n_classes: 10
+  save_model_interval: 5
+  pixelcnn_useSigmoid: False
 
 optimizerConfigs:
   optimizer_name: Adam
-  learning_rate: 1e-3
+  learning_rate: 1e-4
   weight_decay: 1e-8
+  w_recon: 1.0
+  w_embedding: 1.0
+  w_commitment: 0.5

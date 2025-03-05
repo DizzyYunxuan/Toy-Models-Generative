@@ -1,4 +1,4 @@
-Configuration_name: 20250121_train_AR_conPixCnn
+Configuration_name: 20250305_train_AR_conPixCnn
 device: 'cuda'
 
 TrainingDataSetConfigs:
@@ -10,16 +10,18 @@ TrainingDataSetConfigs:
   reshape_to_vector: False
   binarize_image: True
   n_classes: 10
+  Normalize: False
 
 TestingDataSetConfigs:
   dataset_name: MNIST
   dataset_type: Test
-  batch_size: 16
+  batch_size: 64
   dataset_path: /media/4T/mit_6s978/data/
   validation_interval: 5
   reshape_to_vector: False
   binarize_image: True
   n_classes: 10
+  Normalize: False
 
 modelConfigs:
   model_class_name: PixelCNN
@@ -28,8 +30,9 @@ modelConfigs:
   num_ResMasked_conv: 4
   inner_chn: 64
   output_chn: 1
+  pixelcnn_useSigmoid: True
 
 
 optimizerConfigs:
   optimizer_name: Adam
-  learning_rate: 2e-4
+  learning_rate: 1e-3

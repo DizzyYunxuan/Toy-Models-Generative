@@ -2,6 +2,7 @@
 vqvae
 pixel cnn
 '''
+import torch
 import os
 from tqdm import tqdm
 import yaml
@@ -29,15 +30,17 @@ def train_vqvae(configs):
     # total_epochs = configs['TrainingDataSetConfigs']['total_epochs']
     total_vqvae_epochs = configs['TrainingDataSetConfigs']['total_vqvae_epochs']
     total_pixelcnn_epochs = configs['TrainingDataSetConfigs']['total_pixelcnn_epochs']
-    for epoch in tqdm(range(total_vqvae_epochs), desc='Epochs'):
-        train_batch_progress = tqdm(train_dataLoader, desc='Train_Batch', leave=False)
-        for iter_idx, train_data in enumerate(train_batch_progress):
-            model.feed_data(train_data)
-            model.optimize_parameters_vqvae()
-            model.tb_write_losses_vqvae(writer, epoch * len(train_batch_progress) + iter_idx)
+    # for epoch in tqdm(range(total_vqvae_epochs), desc='Epochs'):
+    #     train_batch_progress = tqdm(train_dataLoader, desc='Train_Batch', leave=False)
+    #     for iter_idx, train_data in enumerate(train_batch_progress):
+    #         model.feed_data(train_data)
+    #         model.optimize_parameters_vqvae()
+    #         model.tb_write_losses_vqvae(writer, epoch * len(train_batch_progress) + iter_idx)
 
-        model.validation_vqvae(writer, epoch, test_dataLoader)
-
+    #     model.validation_vqvae(writer, epoch, test_dataLoader)
+    
+    model.vqvae_module.load_state_dict(torch.load('expriments_save/20250226_train_VQVAE_conditional/model_epoch_19.pth'), strict=True)
+    model.validation_vqvae(writer, 100, test_dataLoader)
 
     for epoch in tqdm(range(total_pixelcnn_epochs), desc='Epochs'):
         train_batch_progress = tqdm(train_dataLoader, desc='Train_Batch', leave=False)
@@ -46,7 +49,7 @@ def train_vqvae(configs):
             model.optimize_parameters_pixelcnn()
             model.tb_write_losses_pixelcnn(writer, epoch * len(train_batch_progress) + iter_idx)
 
-        model.validation(writer, epoch)
+        model.validation_pixelcnn(writer, epoch)
 
 
 with open('options/train/train_config_vqvae.yaml') as f:

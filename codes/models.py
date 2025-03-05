@@ -3,12 +3,12 @@ import numpy as np
 import yaml
 import torch.nn.functional as F
 from matplotlib import pyplot as plt
-from util import generate_torus_point_cloud
-from autoregressive_blocks import PixelCNN, ConditionalPixelCNN
+from util import generate_torus_point_cloud, visual_tensor_imgs
+from autoregressive_blocks import PixelCNN
 from gan_blocks import LinearSFT, Generator, Discriminator
 from diffusion_blocks import ContextUnet
 from transformers import VisionTransformer
-from vqvae_blocks import VQVAE
+from vqvae_blocks import VQVAE, PixelCNN_Embedding
 import itertools
 from tqdm import tqdm
 
@@ -180,8 +180,9 @@ class AutoEncoder(AutoEncoderBaseModel):
         image = np.zeros((image_height, image_width))
         
         test_dataLoader_iterator = iter(test_dataLoader)
-        test_data = next(test_dataLoader_iterator)
+        
         for i in range(10):
+            test_data = next(test_dataLoader_iterator)
             with torch.no_grad():
                 self.feed_data(test_data)
                 self.test()
@@ -190,7 +191,7 @@ class AutoEncoder(AutoEncoderBaseModel):
             recon_img = self.output_dict['imgs'].view(test_data['image'].shape[0], digit_size, digit_size).cpu().numpy()
             in_re_img = np.concatenate([input_img, recon_img], axis=2)
             for b in range(in_re_img.shape[0]):
-                image[i * digit_size: (i+1) * digit_size, b * in_re_img.shape[2]: (b+1) * in_re_img.shape[2]] = in_re_img[i, :, :]
+                image[i * digit_size: (i+1) * digit_size, b * in_re_img.shape[2]: (b+1) * in_re_img.shape[2]] = in_re_img[b, :, :]
             
         tb_writer.add_image('reconstructed_image'.format(epoch), image, epoch, dataformats="HW")
 
@@ -512,22 +513,25 @@ class PixelCNN_model(torch.nn.Module):
 
         num_input_c = modelConfigs['input_chn']
         num_inner_c = modelConfigs['inner_chn']
-        num_output_c = modelConfigs['output_chn']
+        self.num_output_c = modelConfigs['output_chn']
+        num_masked_convs = modelConfigs['num_ResMasked_conv']
+        use_sigmoid = modelConfigs['pixelcnn_useSigmoid']
         self.validation_interval = configs['TestingDataSetConfigs']['validation_interval']
         self.conditional = modelConfigs['conditional']
         self.n_classes = configs['TestingDataSetConfigs']['n_classes']
         self.device = configs['device']
 
-        if self.conditional:
-            self.pixelCNN = ConditionalPixelCNN(num_input_c=num_input_c, num_inner_c=num_inner_c, num_output_c=num_output_c)
-        else:
-            self.pixelCNN = PixelCNN(num_input_c=num_input_c, num_inner_c=num_inner_c, num_output_c=num_output_c)
+        # if self.conditional:
+        #     self.pixelCNN = ConditionalPixelCNN(num_input_c=num_input_c, num_inner_c=num_inner_c, num_output_c=num_output_c)
+        # else:
+        self.pixelCNN = PixelCNN(num_input_c=num_input_c, num_inner_c=num_inner_c, num_output_c=self.num_output_c, num_masked_convs=num_masked_convs, useSigmoid=use_sigmoid, num_classes=self.n_classes,conditional=self.conditional)
 
 
         # init self modules, loss and optimizers
         self.input_x = None
         self.output_dict = {}
         self.loss_fn = torch.nn.functional.binary_cross_entropy
+        # self.loss_fn = torch.nn.CrossEntropyLoss()
         self.optimizer = torch.optim.Adam(params=self.parameters(), 
                                      lr=float(optimizerConfigs['learning_rate']))
         self.to(self.device)
@@ -562,11 +566,15 @@ class PixelCNN_model(torch.nn.Module):
 
     def compute_loss(self):
         output_img = self.output_dict['imgs']
+        # with torch.no_grad():
+        #     self.gt = torch.clamp(self.gt, 0, 1)
+        #     self.gt = self.gt.squeeze() * (self.num_output_c - 1)
+        #     self.gt = self.gt.long()
         self.loss = self.loss_fn(output_img, self.gt)
         
     
     def tb_write_losses(self, tb_write, iter_idx):
-        tb_write.add_scalar('training loss/BCE loss',
+        tb_write.add_scalar('training loss/CE loss',
                             self.loss.item(),
                             iter_idx)
     
@@ -1228,17 +1236,16 @@ class VQVAE_model(torch.nn.Module):
         inner_channel = modelConfigs['inner_channel']
         output_channel = modelConfigs['output_channel']
         num_embedding = modelConfigs['num_embedding']
-        num_class = self.TrainingDataSetConfigs['n_classes']
-        conditional = self.TrainingDataSetConfigs['conditional']
+        self.num_class = self.TrainingDataSetConfigs['n_classes']
+        self.conditional = self.TrainingDataSetConfigs['conditional']
+        useSigmoid = modelConfigs['pixelcnn_useSigmoid']
 
         self.w_recon, self.w_embedding, self.w_commitment = optimizerConfigs['w_recon'], optimizerConfigs['w_embedding'], optimizerConfigs['w_commitment']
 
-        self.vqvae_module = VQVAE(image_channel, inner_channel, output_channel, num_embedding, num_class, conditional)
+        self.vqvae_module = VQVAE(image_channel, inner_channel, output_channel, num_embedding, self.num_class, self.conditional)
         # self.pixelcnn_module = PixelCNN()
-        if self.conditional:
-            self.pixelcnn_module = ConditionalPixelCNN(num_input_c=inner_channel, num_inner_c=inner_channel, num_output_c=inner_channel)
-        else:
-            self.pixelcnn_module = PixelCNN(num_input_c=inner_channel, num_inner_c=inner_channel, num_output_c=inner_channel)
+        # (self, num_input_c=1, num_inner_c=64, num_output_c=1, num_masked_convs=4, useSigmoid=True):
+        self.pixelcnn_module = PixelCNN_Embedding(num_input_c=inner_channel, num_inner_c=inner_channel, num_output_c=num_embedding, useSigmoid=useSigmoid,  num_embedding=num_embedding, conditional=self.conditional, n_classes=self.num_class)
 
         # init self modules and optimizers
         self.optimizer_vqvae = torch.optim.Adam(params=self.vqvae_module.parameters(), 
@@ -1248,6 +1255,7 @@ class VQVAE_model(torch.nn.Module):
                                      lr=float(optimizerConfigs['learning_rate']))
         
         self.mse_loss = torch.nn.MSELoss()
+        self.ce_loss = torch.nn.CrossEntropyLoss()
 
         self.save_model_interval = modelConfigs['save_model_interval']
         self.to(self.device)
@@ -1278,7 +1286,7 @@ class VQVAE_model(torch.nn.Module):
     
     def tb_write_losses_vqvae(self, tb_write, iter_idx):
         tb_write.add_scalar('Training loss/totoal_vqvae',
-                            self.loss.item(),
+                            self.loss_vqvae.item(),
                             iter_idx)
         
         tb_write.add_scalar('Training loss/loss_Reconstruction',
@@ -1286,7 +1294,7 @@ class VQVAE_model(torch.nn.Module):
                             iter_idx)
         
         tb_write.add_scalar('Training loss/loss_Embedding',
-                            self.loss_embbeding.item(),
+                            self.loss_embedding.item(),
                             iter_idx)
         
         tb_write.add_scalar('Training loss/loss_Commitment',
@@ -1295,6 +1303,8 @@ class VQVAE_model(torch.nn.Module):
 
     def validation_vqvae(self, tb_writer, epoch, test_dataLoader):
         self.eval()
+
+        # recon validation
         n = 10
         digit_size = 28
         image_width = digit_size * n * 2
@@ -1302,45 +1312,73 @@ class VQVAE_model(torch.nn.Module):
         image = np.zeros((image_height, image_width))
         
         test_dataLoader_iterator = iter(test_dataLoader)
-        test_data = next(test_dataLoader_iterator)
+        
         for i in range(10):
             with torch.no_grad():
+                test_data = next(test_dataLoader_iterator)
                 self.feed_data(test_data)
-                self.test()
+                ze, zq, recon_img = self.vqvae_module(self.input_x)
 
             input_img = test_data['image'].view(test_data['image'].shape[0], digit_size, digit_size).cpu().numpy()
-            recon_img = self.output_dict['imgs'].view(test_data['image'].shape[0], digit_size, digit_size).cpu().numpy()
+            recon_img = recon_img.view(test_data['image'].shape[0], digit_size, digit_size).cpu().numpy()
             in_re_img = np.concatenate([input_img, recon_img], axis=2)
             for b in range(in_re_img.shape[0]):
-                image[i * digit_size: (i+1) * digit_size, b * in_re_img.shape[2]: (b+1) * in_re_img.shape[2]] = in_re_img[i, :, :]
-            
+                image[i * digit_size: (i+1) * digit_size, b * in_re_img.shape[2]: (b+1) * in_re_img.shape[2]] = in_re_img[b, :, :]
+        image = np.clip(image, 0, 1)
         tb_writer.add_image('reconstructed_image'.format(epoch), image, epoch, dataformats="HW")
+
+        # code book test
+        K, C = self.vqvae_module.embedding.weight.data.shape
+        H, W = 7, 7
+        h_size = H * self.vqvae_module.n_downsample
+        w_size = W * self.vqvae_module.n_downsample
+        image_height, image_width = h_size * 10, w_size * 10
+        tb_image = np.zeros((image_height, image_width))
+        for i in range(10):
+            latent_shape = [10, H, W]
+            latent_codes = torch.randint(0, C, latent_shape).to(self.device)
+            label = torch.randint(0, self.num_class, (10, )).to(self.device)
+            with torch.no_grad():
+                latent_codes = self.vqvae_module.embedding(latent_codes)
+                latent_codes = latent_codes.permute(0, 3, 1, 2)
+                img = self.vqvae_module.decoder(latent_codes)
+            img = img.view(test_data['image'].shape[0], digit_size, digit_size).cpu().numpy()
+            for b in range(in_re_img.shape[0]):
+                tb_image[i * h_size: (i+1) * h_size, b * w_size: (b+1) * w_size] = img[b, :, :]
+        tb_image = np.clip(tb_image, 0, 1)
+        tb_writer.add_image('codeBook_rand_image'.format(epoch), tb_image, epoch, dataformats="HW")
+
+        if (epoch + 1) % self.save_model_interval == 0:
+            save_path = './expriments_save/{}/model_epoch_{}.pth'.format(self.configs['Configuration_name'], epoch)
+            torch.save(self.vqvae_module.state_dict(), save_path)
 
     # pixelcnn
     def optimize_parameters_pixelcnn(self):
         self.train()
 
         with torch.no_grad():
-            ze = self.vqvae_module.encoder(self.input_x)
-            zq = self.vqvae_module.embbed(ze)
+            min_index = self.vqvae_module.encode(self.input_x)
 
-        pred_zq = self.pixelcnn_module(zq)
-        self.loss_pixelcnn_recont = self.mse_loss(pred_zq, zq)
+        if self.conditional:
+            pred_min_index = self.pixelcnn_module(min_index, self.label)
+        else:
+            pred_min_index = self.pixelcnn_module(min_index)
+        self.loss_pixelcnn_ce = self.ce_loss(pred_min_index, min_index)
 
         self.optimizer_pixelcnn.zero_grad()
-        self.loss_pixelcnn_recont.backward()
+        self.loss_pixelcnn_ce.backward()
         self.optimizer_pixelcnn.step()
 
     def tb_write_losses_pixelcnn(self, tb_write, iter_idx):
         tb_write.add_scalar('Training loss/totoal_pixelcnn',
-                            self.loss_pixelcnn_recont.item(),
+                            self.loss_pixelcnn_ce.item(),
                             iter_idx)
     
     def validation_pixelcnn(self, tb_writer, epoch):
 
         target_size = self.TestingDataSetConfigs['test_sample_size']
         samples_shape = [1] + target_size # [1, 28, 28]
-        samples = torch.zeros(samples_shape)
+        samples = torch.zeros(samples_shape).to(self.device)
         H, W = samples_shape[1:]
 
         with torch.no_grad():
@@ -1348,11 +1386,12 @@ class VQVAE_model(torch.nn.Module):
             # label = torch.arange(0, 10).repeat(10, 1).transpose(1, 0)
             # samples = torch.zeros(samples_shape)
             zq = self.vqvae_module.encoder(samples)
-            H, W = zq.shape[1:]
+            C, H, W = zq.shape
 
-            latent_samples_shape = [100] + samples_shape 
-            latent_samples = torch.zeros(latent_samples_shape) # [100, 28, 28]
+            latent_samples_shape = [100] + [H, W] 
+            latent_samples = torch.zeros(latent_samples_shape).to(self.device).long() # [100, 1, 7, 7]
             label = torch.arange(0, 10).repeat(10, 1).transpose(1, 0).flatten() # [100, 1]
+            label = F.one_hot(label, num_classes=self.num_class).float().to(self.device)
 
             for i in range(H):
                 for j in range(W):
@@ -1360,23 +1399,26 @@ class VQVAE_model(torch.nn.Module):
                         # test_data = {}
                         # test_data['image'] = latent_samples
                         # test_data['label'] = label
-                        pred_code = self.pixelcnn_module(latent_samples)
-                        prob_dist = F.softmax(pred_code, dim=1)
+                        if self.conditional:
+                            pred_code = self.pixelcnn_module(latent_samples, label)
+                        else:
+                            pred_code = self.pixelcnn_module(latent_samples)
+                        prob_dist = F.softmax(pred_code[:, :, i, j], dim=1)
                         pixel = torch.multinomial(prob_dist, 1)
-                        latent_samples[:, :, i, j] = pixel[:, 0]
+                        latent_samples[:, i, j] = pixel[:, 0]
 
-        
-            samples = self.vqvae_module.decoder(latent_samples)
+
+            samples = self.vqvae_module.decode(latent_samples)
         
         samples = samples.cpu().numpy().transpose(0, 2, 3, 1)
         samples = samples.squeeze()
         samples_flatten_img = np.zeros([10*28, 10*28])
         for i in range(10):
-            c_chunk = samples[i*10:(i+1)*10, :, :, :] # [10, 28, 28]
-            c_chunk = np.concatenate(c_chunk, axis=2)
+            c_chunk = samples[i*10:(i+1)*10, :, :] # [10, 28, 28]
+            c_chunk = np.concatenate(c_chunk, axis=1)
             samples_flatten_img[i*28:(i+1)*28, :] = c_chunk
 
-        
+        samples_flatten_img = np.clip(samples_flatten_img, 0.0, 1.0)
         tb_writer.add_image('generated_image'.format(epoch), samples_flatten_img, epoch, dataformats="HW")
 
 if __name__ == '__main__':

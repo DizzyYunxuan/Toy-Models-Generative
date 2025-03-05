@@ -37,6 +37,10 @@ def create_model(configs):
         from models import VisionTransformer_model
         model = VisionTransformer_model(configs)
 
+    elif model_class_name == 'VQVAE':
+        from models import VQVAE_model
+        model = VQVAE_model(configs)
+
     else:
         raise(NotImplemented('model {} is not registered!'.format(model_class_name)))
     print(model)
@@ -152,6 +156,16 @@ def plot_torus_point_cloud(x, y, z, ax, color='b', name='Training Data'):
 
 def binarize_image(tensor):
     return (tensor > 0.5).float()
+
+
+
+def visual_tensor_imgs(tensor):
+
+    img = tensor.detach().cpu().numpy().transpose(0, 2, 3, 1)
+    plt.figure()
+    plt.imshow(img)
+
+
 
 
 
