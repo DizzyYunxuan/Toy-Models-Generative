@@ -20,6 +20,7 @@ class MaskedConv2d(nn.Conv2d):
         self.mask = self.mask.to(device)
 
         self.label_emb = torch.nn.Linear(10, 28 * 28)
+        # self.conv1x1 = torch.nn.Conv2d(1, output_num_c, 1)
 
 
     def forward(self, x, condition=None):
@@ -28,6 +29,7 @@ class MaskedConv2d(nn.Conv2d):
             with torch.no_grad():
                 self.weight.data *= self.mask
             condition = self.label_emb(condition).view(-1, 1, 28, 28)
+            # condition = self.conv1x1(condition)
             # condition = condition.unsqueeze(2)
             # condition = condition.unsqueeze(3)
             # condition = condition.repeat(1, 1, h, w)

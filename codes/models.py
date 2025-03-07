@@ -507,8 +507,10 @@ class PixelCNN_model(torch.nn.Module):
         super().__init__()
         # num_input_c=1, num_inner_c=64, num_output_c=1, num_masked_convs=4
 
+        self.configs = configs
         modelConfigs = configs['modelConfigs']
         optimizerConfigs = configs['optimizerConfigs']
+
 
 
         num_input_c = modelConfigs['input_chn']
@@ -530,10 +532,14 @@ class PixelCNN_model(torch.nn.Module):
         # init self modules, loss and optimizers
         self.input_x = None
         self.output_dict = {}
-        self.loss_fn = torch.nn.functional.binary_cross_entropy
-        # self.loss_fn = torch.nn.CrossEntropyLoss()
+        # self.loss_fn = torch.nn.functional.binary_cross_entropy
+        self.loss_fn = torch.nn.CrossEntropyLoss()
         self.optimizer = torch.optim.Adam(params=self.parameters(), 
                                      lr=float(optimizerConfigs['learning_rate']))
+        
+
+        self.save_model_interval = modelConfigs['save_model_interval']
+
         self.to(self.device)
 
 
@@ -566,10 +572,12 @@ class PixelCNN_model(torch.nn.Module):
 
     def compute_loss(self):
         output_img = self.output_dict['imgs']
-        # with torch.no_grad():
-        #     self.gt = torch.clamp(self.gt, 0, 1)
-        #     self.gt = self.gt.squeeze() * (self.num_output_c - 1)
-        #     self.gt = self.gt.long()
+        with torch.no_grad():
+            self.gt = torch.clamp(self.gt, 0, 1)
+            self.gt = self.gt.squeeze() * (self.num_output_c - 1)
+            self.gt = torch.ceil(self.gt)
+            self.gt = self.gt.long()
+            
         self.loss = self.loss_fn(output_img, self.gt)
         
     
@@ -582,6 +590,7 @@ class PixelCNN_model(torch.nn.Module):
     def reconstruction_test(self, tb_writer, epoch, test_dataLoader):
         H, W = 28, 28
         self.eval()
+        samples = torch.zeros([64, 1, 28, 28])
         with torch.no_grad():
             for iter, test_data in enumerate(test_dataLoader):
                 # images = images.to(device)
@@ -591,10 +600,13 @@ class PixelCNN_model(torch.nn.Module):
 
                 for i in range(H):
                     for j in range(W):
-                        pred[:, :, i, j] = torch.bernoulli(pred[:, :, i, j], out=pred[:, :, i, j])
+                        # pred[:, :, i, j] = torch.bernoulli(pred[:, :, i, j], out=pred[:, :, i, j])
+                        prob_dist = F.softmax(pred[:, :, i, j], dim=1)
+                        # samples[:, :, i, j] = torch.argmax(pred_sm, dim=1, keepdim=True) / (self.num_output_c - 1)
+                        samples[:, :, i, j] = torch.multinomial(prob_dist, 1).float() / (self.num_output_c - 1)
                 break
 
-        samples = pred.detach().cpu().numpy().transpose(0, 2, 3, 1)
+        samples = samples.detach().cpu().numpy().transpose(0, 2, 3, 1) * 255
         fig, axes = plt.subplots(8, 8, figsize=(15, 15))
 
         for i in range(64):
@@ -625,16 +637,18 @@ class PixelCNN_model(torch.nn.Module):
         with torch.no_grad():
             for i in range(H):
                 for j in range(W):
-                    if j > 0 and i > 0:
-                        test_data = {}
-                        test_data['image'] = samples
-                        test_data['label'] = label
-                        self.feed_data(test_data)
-                        self.test()
-                        out = self.output_dict['imgs']
-                        samples[:, :, i, j] = torch.bernoulli(out[:, :, i, j], out=samples[:, :, i, j])
+                    test_data = {}
+                    test_data['image'] = samples
+                    test_data['label'] = label
+                    self.feed_data(test_data)
+                    self.test()
+                    output = self.output_dict['imgs']
+                    prob_dist = F.softmax(output[:, :, i, j], -1)
+                    pixel = torch.multinomial(prob_dist, 1).float() / (self.num_output_c - 1)
+                    # pixel = torch.argmax(prob_dist, dim=1, keepdim=True) / (self.num_output_c - 1)
+                    samples[:, :, i, j] = pixel
 
-        samples = samples.cpu().numpy().transpose(0, 2, 3, 1)
+        samples = samples.cpu().numpy().transpose(0, 2, 3, 1) * 255
 
         if self.conditional:
             fig, axes = plt.subplots(10, 6, figsize=(15, 30))
@@ -666,6 +680,10 @@ class PixelCNN_model(torch.nn.Module):
     
         self.reconstruction_test(tb_writer, epoch, test_dataLoader)
         self.generation_test(tb_writer, epoch)
+
+        if (epoch + 1) % self.save_model_interval == 0:
+            save_path = './expriments_save/{}/model_epoch_{}.pth'.format(self.configs['Configuration_name'], epoch)
+            torch.save(self.state_dict(), save_path)
 
         
 
