@@ -42,8 +42,8 @@ def train(configs):
 # with open('train_config_pointCloudVae.yaml') as f:
 #     configs = yaml.safe_load(f)
 
-with open('options/train/train_config_arPixelCNN.yaml') as f:
-    configs = yaml.safe_load(f)
+# with open('options/train/train_config_arPixelCNN.yaml') as f:
+#     configs = yaml.safe_load(f)
 
 # with open('train_config_unconGAN.yaml') as f:
 #     configs = yaml.safe_load(f)
@@ -54,8 +54,8 @@ with open('options/train/train_config_arPixelCNN.yaml') as f:
 # with open('train_config_diffusion.yaml') as f:
 #     configs = yaml.safe_load(f)
 
-# with open('train_config_transformer.yaml') as f:
-#     configs = yaml.safe_load(f)
+with open('options/train/train_config_transformer.yaml') as f:
+    configs = yaml.safe_load(f)
 
 
 

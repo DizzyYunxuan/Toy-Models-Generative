@@ -1,4 +1,4 @@
-Configuration_name: 20250221_train_transformer
+Configuration_name: 20250308_train_transformer
 device: 'cuda'
 
 TrainingDataSetConfigs:

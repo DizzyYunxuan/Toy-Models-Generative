@@ -1,6 +1,8 @@
 import torch
 from einops import repeat, rearrange
-
+import cv2
+from matplotlib import pyplot as plt
+import numpy as np
 
 
 class VisionTransformer(torch.nn.Module):
@@ -14,7 +16,8 @@ class VisionTransformer(torch.nn.Module):
 
         self.class_token = torch.nn.Parameter(torch.randn(1, 1, embed_size))
         self.positional_encoder = torch.nn.Parameter(torch.randn(1, self.num_patch + 1, embed_size))
-        self.patch_encoder = torch.nn.Linear(self.patch_size, embed_size)
+        self.patch_encoder = torch.nn.Conv2d(image_channel, embed_size, patch_size, patch_size)
+        # self.patch_encoder = torch.nn.Linear(self.patch_size, embed_size)
 
         trans_modules = []
         for i in range(num_transformer):
@@ -26,8 +29,9 @@ class VisionTransformer(torch.nn.Module):
 
     def forward(self, x):
         bs, c, h, w = x.shape # [bs, 1, 28, 28]
-        x = x.reshape(bs, self.num_patch, c * self.patch_size)# [bs, 16, 49]
-        x = self.patch_encoder(x) # [bs, 16, 96]
+        x = self.patch_encoder(x) # [bs, embed_size, 4, 4]
+        x = x.flatten(2) # [bs, embed_size, 16]
+        x = x.transpose(1, 2) # [bs, 16, embed_size]
 
         class_token = repeat(self.class_token, '1 1 d -> b 1 d', b=bs ) # [bs, 1, 96]
         x = torch.cat([class_token, x], dim=1) # [bs, 17, 96]
@@ -106,9 +110,34 @@ class MultiHeadAttention(torch.nn.Module):
 
 
 if __name__ == '__main__':
-    test_tensor = torch.randn([3, 1, 28, 28])
-    vit = VisionTransformer(1, 28, 7, 3, 3, 96, 10)
+    
+    # test_tensor = torch.randn([3, 1, 28, 28])
+    # vit = VisionTransformer(1, 28, 7, 3, 3, 96, 10)
 
-    print(test_tensor.shape)
-    res = vit(test_tensor)
-    print(res.shape)
+    # print(test_tensor.shape)
+    # res = vit(test_tensor)
+    # print(res.shape)
+
+    img = cv2.imread('./test.png')[:, :, 0] / 255.0
+    img = torch.from_numpy(img).reshape(1, 1, 28, 28)
+    print(img.shape)
+
+    patches = img.reshape(1, 7 ** 2, 16) #(n,c,w,h) --> (n,7*7,16)
+
+    res = np.zeros_like(img)[0, 0, :, :]
+    for i in range(7**2):
+        p = patches[0, i, :].reshape(4, 4)
+        sh = i // 7
+        sw = i % 7
+
+        sh_index = sh * 4
+        eh_index = (sh + 1) * 4
+
+        sw_index = sw * 4
+        ew_index = (sw + 1) * 4
+
+        res[sh_index:eh_index, sw_index:ew_index] = p 
+
+    print()
+
+
