@@ -33,9 +33,9 @@ def create_model(configs):
         from models import DDPM_model
         model = DDPM_model(configs)
     
-    elif model_class_name == 'Transformer':
-        from models import VisionTransformer_model
-        model = VisionTransformer_model(configs)
+    elif model_class_name == 'Transformer_Classifier':
+        from models import VisionTransformer_Classifier_model
+        model = VisionTransformer_Classifier_model(configs)
 
     elif model_class_name == 'VQVAE':
         from models import VQVAE_model

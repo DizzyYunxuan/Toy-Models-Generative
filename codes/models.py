@@ -1083,7 +1083,7 @@ class DDPM_model(torch.nn.Module):
 
 
 
-class VisionTransformer_model(torch.nn.Module):
+class VisionTransformer_Classifier_model(torch.nn.Module):
     def __init__(self, configs) -> None:
         super().__init__()
 
@@ -1102,8 +1102,9 @@ class VisionTransformer_model(torch.nn.Module):
         num_head = modelConfigs['num_head']
         embed_size = modelConfigs['embed_size']
         num_class = TrainingDataSetConfigs['n_classes']
+        use_Classfier = modelConfigs['use_Classfier']
 
-        self.vit = VisionTransformer(image_channel=image_channel, image_size=image_size, patch_size=patch_size, num_transformer=num_transformer, num_head=num_head, embed_size=embed_size, num_class=num_class)
+        self.vit = VisionTransformer(image_channel=image_channel, image_size=image_size, patch_size=patch_size, num_transformer=num_transformer, num_head=num_head, embed_size=embed_size, num_class=num_class, classifierLayer=use_Classfier)
 
 
         # init self modules, loss and optimizers

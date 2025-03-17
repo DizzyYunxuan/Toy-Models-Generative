@@ -25,7 +25,7 @@ TestingDataSetConfigs:
   n_classes: 10
 
 modelConfigs:
-  model_class_name: Transformer
+  model_class_name: Transformer_Classifier
   image_channel: 1
   image_size: 28
   patch_size: 7
@@ -33,6 +33,7 @@ modelConfigs:
   num_head: 3
   embed_size: 192
   save_model_interval: 5
+  use_Classfier: True
   
 
 optimizerConfigs:

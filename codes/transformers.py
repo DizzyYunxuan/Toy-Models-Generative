@@ -6,13 +6,14 @@ import numpy as np
 
 
 class VisionTransformer(torch.nn.Module):
-    def __init__(self, image_channel, image_size, patch_size, num_transformer, num_head, embed_size, num_class) -> None:
+    def __init__(self, image_channel, image_size, patch_size, num_transformer, num_head, embed_size, num_class, classifierLayer=False) -> None:
         super().__init__()
 
 
         self.image_channel = image_channel
         self.num_patch = (image_size // patch_size) ** 2
         self.patch_size =  image_channel * patch_size ** 2
+        self.classifierLayer = classifierLayer
 
         self.class_token = torch.nn.Parameter(torch.randn(1, 1, embed_size))
         self.positional_encoder = torch.nn.Parameter(torch.randn(1, self.num_patch + 1, embed_size))
@@ -24,7 +25,8 @@ class VisionTransformer(torch.nn.Module):
             trans_modules.append(TransformerEncoder(num_head=num_head, embed_size=embed_size))
         self.transformer_modules = torch.nn.Sequential(*trans_modules)
         
-        self.classifier = torch.nn.Linear(embed_size, num_class)
+        if self.classifierLayer:
+            self.classifier = torch.nn.Linear(embed_size, num_class)
 
 
     def forward(self, x):
@@ -40,9 +42,11 @@ class VisionTransformer(torch.nn.Module):
         
         x = self.transformer_modules(x) # [bs, 16, 96]
 
-        x = self.classifier(x)# [bs, 16, 10]
-
-        x = torch.mean(x, dim=1)# [bs, 10]
+        if self.classifierLayer:
+            x = self.classifier(x) # [bs, 16, 10]
+            x = torch.mean(x, dim=1) # [bs, 10]
+        
+        
 
         return x
 
@@ -65,8 +69,9 @@ class TransformerEncoder(torch.nn.Module):
     def forward(self, x):
         x_res = self.layer_norm_0(x) # [bs, 17, 96]
         x_res = self.multiHeadAtten(x_res) + x
-        x = self.mlp(self.layer_norm_1(x_res)) + x_res
 
+        x_res = self.layer_norm_1(x_res)
+        x = self.mlp(x_res) + x_res
         return x
     
 
