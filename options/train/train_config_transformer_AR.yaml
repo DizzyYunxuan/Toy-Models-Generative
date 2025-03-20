@@ -1,44 +1,49 @@
-Configuration_name: 20250317_train_transformer_cls_token
+Configuration_name: 20250317_train_transformer_AR_generation
 device: 'cuda'
 
 TrainingDataSetConfigs:
   dataset_name: MNIST
   dataset_type: Train
   dataset_path: /media/4T/mit_6s978/data/
-  batch_size: 256
-  total_epochs: 30
+  batch_size: 64
+  total_epochs: 15
   reshape_to_vector: False
   binarize_image: False
-  Normalize: True
+  Normalize: False
   n_classes: 10
+  color_level: 256
+  
 
 TestingDataSetConfigs:
   dataset_name: MNIST
   dataset_type: Test
   num_test_samples: 16
-  batch_size: 128
+  batch_size: 64
   dataset_path: /media/4T/mit_6s978/data/
   validation_interval: 5
   reshape_to_vector: False
   binarize_image: False
-  Normalize: True
+  Normalize: False
   n_classes: 10
+  color_level: 256
 
 modelConfigs:
-  model_class_name: Transformer_Classifier
+  model_class_name: Transformer_AR_Generation
   image_channel: 1
   image_size: 28
   patch_size: 7
   num_transformer: 4
   num_head: 3
-  embed_size: 192
+  embed_size: 96
   save_model_interval: 5
-  use_Classfier: True
+  maskedAtten: True
+  conditional: False
+
   
 
 optimizerConfigs:
   optimizer_name: Adam
   learning_rate: 1e-3
 
-inferenceConfigs:
-  load_path: /home/SENSETIME/weiyunxuan1/generative_models/expriments_save/20250221_train_transformer/model_epoch_29.pth
+# inferenceConfigs:
+#   load_path: /home/SENSETIME/weiyunxuan1/generative_models/expriments_save/20250221_train_transformer/model_epoch_29.pth

@@ -37,6 +37,11 @@ def create_model(configs):
         from models import VisionTransformer_Classifier_model
         model = VisionTransformer_Classifier_model(configs)
 
+    elif model_class_name == 'Transformer_AR_Generation':
+        from models import VisionTransformer_AR_Generation_model
+        model = VisionTransformer_AR_Generation_model(configs)
+
+
     elif model_class_name == 'VQVAE':
         from models import VQVAE_model
         model = VQVAE_model(configs)

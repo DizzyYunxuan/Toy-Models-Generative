@@ -5,7 +5,7 @@ TrainingDataSetConfigs:
   dataset_name: MNIST
   dataset_type: Train
   dataset_path: /media/4T/mit_6s978/data/
-  batch_size: 256
+  batch_size: 2048
   total_epochs: 20
   binarize_image: False
   Normalize: False
@@ -13,7 +13,7 @@ TrainingDataSetConfigs:
   n_classes: 10
   conditional: True
   total_vqvae_epochs: 20
-  total_pixelcnn_epochs: 20
+  total_pixelcnn_epochs: 600
 
 TestingDataSetConfigs:
   dataset_name: MNIST
@@ -33,12 +33,12 @@ modelConfigs:
   output_channel: 1
   num_embedding: 64  # num, dim
   n_classes: 10
-  save_model_interval: 5
+  save_model_interval: 100
   pixelcnn_useSigmoid: False
 
 optimizerConfigs:
   optimizer_name: Adam
-  learning_rate: 1e-4
+  learning_rate: 1e-3
   weight_decay: 1e-8
   w_recon: 1.0
   w_embedding: 1.0

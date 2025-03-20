@@ -7,7 +7,7 @@ from util import generate_torus_point_cloud, visual_tensor_imgs
 from autoregressive_blocks import PixelCNN
 from gan_blocks import LinearSFT, Generator, Discriminator
 from diffusion_blocks import ContextUnet
-from transformers import VisionTransformer
+from transformers import VisionTransformer, VisionTransformer_AR_Generator
 from vqvae_blocks import VQVAE, PixelCNN_Embedding
 import itertools
 from tqdm import tqdm
@@ -1239,6 +1239,211 @@ class VisionTransformer_Classifier_model(torch.nn.Module):
 
 
 
+class VisionTransformer_AR_Generation_model(torch.nn.Module):
+    def __init__(self, configs) -> None:
+        super().__init__()
+
+        self.configs = configs
+        modelConfigs = configs['modelConfigs']
+        optimizerConfigs = configs['optimizerConfigs']
+        TrainingDataSetConfigs = configs['TrainingDataSetConfigs']
+        TestingDataSetConfigs = configs['TestingDataSetConfigs']
+        self.device = configs['device']
+
+        # image_channel, image_size, patch_size, num_transformer, num_head, embed_size, num_class
+        image_channel = modelConfigs['image_channel']
+        image_size = modelConfigs['image_size']
+        patch_size = modelConfigs['patch_size']
+        num_transformer = modelConfigs['num_transformer']
+        num_head = modelConfigs['num_head']
+        embed_size = modelConfigs['embed_size']
+        self.color_level = TrainingDataSetConfigs['color_level']
+        maskedAtten = modelConfigs['maskedAtten']
+        self.conditional = modelConfigs['conditional']
+
+        # (self, image_channel, image_size, patch_size, num_transformer, num_head, embed_size, color_level, maskedAtten)
+        self.vit = VisionTransformer_AR_Generator(image_channel=image_channel, image_size=image_size, patch_size=patch_size, num_transformer=num_transformer, num_head=num_head, embed_size=embed_size, color_level=self.color_level, maskedAtten=maskedAtten)
+
+
+        # init self modules, loss and optimizers
+        self.loss_fn = torch.nn.CrossEntropyLoss()
+        self.optimizer = torch.optim.Adam(params=self.vit.parameters(), 
+                                     lr=float(optimizerConfigs['learning_rate']))
+        
+        self.save_model_interval = modelConfigs['save_model_interval']
+        
+        self.to(self.device)
+
+    def feed_data(self, input_data):
+        self.input_x = input_data['image'].to(self.device)
+        self.label = input_data['label'].to(self.device) # one hot now
+        self.gt = self.input_x.clone()
+
+    def optimize_parameters(self):
+        self.train()
+
+        with torch.no_grad():
+            self.gt = torch.clamp(self.gt, 0, 1)
+            self.gt = self.gt.squeeze() * (self.color_level - 1)
+            self.gt = torch.ceil(self.gt)
+            self.gt = self.gt.long()
+
+        pred = self.vit(self.input_x)
+
+        self.loss = self.loss_fn(pred, self.gt)
+
+        self.optimizer.zero_grad()
+        self.loss.backward()
+        self.optimizer.step()
+
+    def tb_write_losses(self, tb_write, iter_idx):
+        tb_write.add_scalar('Training loss/CrossEntorpy_loss',
+                            self.loss.item(),
+                            iter_idx)
+
+
+    def reconstruction_test(self, tb_writer, epoch, test_dataLoader):
+        H, W = 28, 28
+        self.eval()
+        samples = torch.zeros([64, 1, 28, 28])
+        with torch.no_grad():
+            for iter, test_data in enumerate(test_dataLoader):
+                # images = images.to(device)
+                self.feed_data(test_data)
+                pred = self.vit(self.input_x)
+
+                for i in range(H):
+                    for j in range(W):
+                        # pred[:, :, i, j] = torch.bernoulli(pred[:, :, i, j], out=pred[:, :, i, j])
+                        prob_dist = F.softmax(pred[:, :, i, j], dim=1)
+                        # samples[:, :, i, j] = torch.argmax(pred_sm, dim=1, keepdim=True) / (self.num_output_c - 1)
+                        samples[:, :, i, j] = torch.multinomial(prob_dist, 1).float() / (self.color_level - 1)
+                break
+
+        samples = samples.detach().cpu().numpy().transpose(0, 2, 3, 1) * 255
+        fig, axes = plt.subplots(8, 8, figsize=(15, 15))
+
+        for i in range(64):
+            sample = samples[i]
+            row, col = divmod(i, 8)
+            axes[row, col].imshow(sample, cmap='gray')
+            axes[row, col].axis('off')
+        
+        plt.tight_layout()
+        fig.canvas.draw()
+
+        # Now we can save it to a numpy array.
+        data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+        data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+        plt.close(fig)
+        tb_writer.add_image('Reconstruction', data, epoch, dataformats="HWC")
+
+    def generation_test(self, tb_writer, epoch):
+        H, W = 28, 28
+        if self.conditional:
+            samples = torch.zeros(size=(60, 1, H, W)).to(self.device)
+            label = np.sort(np.array([np.arange(self.n_classes)] * 6).flatten())
+            label = F.one_hot(torch.tensor(label), num_classes=self.n_classes).to(self.device).float()
+        else:
+            samples = torch.zeros(size=(64, 1, H, W)).to(self.device)
+            label = torch.ones(size=(64, 1)).to(self.device)
+        with torch.no_grad():
+            for i in range(H):
+                for j in range(W):
+                    test_data = {}
+                    test_data['image'] = samples
+                    test_data['label'] = label
+                    self.feed_data(test_data)
+                    output = self.vit(self.input_x)
+                    prob_dist = F.softmax(output[:, :, i, j], -1)
+                    pixel = torch.multinomial(prob_dist, 1).float() / (self.color_level - 1)
+                    # pixel = torch.argmax(prob_dist, dim=1, keepdim=True) / (self.num_output_c - 1)
+                    samples[:, :, i, j] = pixel
+
+        samples = samples.cpu().numpy().transpose(0, 2, 3, 1) * 255
+
+        if self.conditional:
+            fig, axes = plt.subplots(10, 6, figsize=(15, 30))
+            for i in range(60):
+                sample = samples[i]
+                row, col = divmod(i, 6)
+                axes[row, col].imshow(sample, cmap='gray')
+                axes[row, col].axis('off')
+        else:
+            fig, axes = plt.subplots(8, 8, figsize=(15, 15))
+            for i in range(64):
+                sample = samples[i]
+                row, col = divmod(i, 8)
+                axes[row, col].imshow(sample, cmap='gray')
+                axes[row, col].axis('off')
+
+        plt.tight_layout()
+        fig.canvas.draw()
+
+        # Now we can save it to a numpy array.
+        data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+        data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+        plt.close(fig)
+        tb_writer.add_image('Generation', data, epoch, dataformats="HWC")
+    
+
+
+    def validation(self, tb_writer, epoch, test_dataLoader):
+
+        # if (epoch + 1) % self.validation_interval == 0 or epoch == 0 :
+    
+        self.reconstruction_test(tb_writer, epoch, test_dataLoader)
+        self.generation_test(tb_writer, epoch)
+
+        if (epoch + 1) % self.save_model_interval == 0:
+            save_path = './expriments_save/{}/model_epoch_{}.pth'.format(self.configs['Configuration_name'], epoch)
+            torch.save(self.state_dict(), save_path)
+
+    # def inference(self, tb_writer, test_dataLoader):
+    #     self.eval()
+    #     correct_num = 0
+    #     total_num = 0
+    #     with torch.no_grad():
+    #         val_batch_progress = tqdm(test_dataLoader, desc='Val_batch', leave=False)
+    #         test_iter_rand = np.random.randint(0, len(test_dataLoader), 10)
+    #         for iter_idx, test_data in enumerate(val_batch_progress):
+    #             self.feed_data(test_data)
+    #             pred_label = self.test()
+    #             gt_label = test_data['label']
+    #             gt_label = torch.argmax(gt_label, dim=-1)
+
+    #             pred_label = pred_label.cpu().numpy()
+    #             gt_label = gt_label.numpy()
+    #             num_cor = np.sum((pred_label - gt_label) == 0)
+    #             correct_num += num_cor
+    #             total_num += pred_label.shape[0]
+
+    #             if iter_idx in test_iter_rand:
+    #                 fig, ax = plt.subplots(4, 4, figsize=(6, 6))
+    #                 for k in range(16):
+    #                     i = k//4
+    #                     j = k%4
+    #                     ax[i,j].cla()
+    #                     ax[i,j].get_yaxis().set_visible(False)
+    #                     ax[i,j].get_xaxis().set_visible(False)
+    #                     ax[i,j].imshow(self.input_x[k,:,:].data.cpu().numpy().reshape(28, 28), cmap='Greys')
+    #                     ax[i, j].set_title(f'Pred Class: {pred_label[k]}', fontsize=10)
+
+    #                 fig.canvas.draw()
+    #                 data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+    #                 data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    #                 plt.close(fig)
+    #                 tb_writer.add_image('Validation Samples', data, iter_idx, dataformats="HWC")
+
+
+    #     acc = correct_num / total_num
+    #     tb_writer.add_scalar('Test/Accuracy', acc, -1)
+
+
+
+
+
+
 class VQVAE_model(torch.nn.Module):
     def __init__(self, configs) -> None:
         super().__init__()
@@ -1254,17 +1459,17 @@ class VQVAE_model(torch.nn.Module):
         image_channel = modelConfigs['input_channel']
         inner_channel = modelConfigs['inner_channel']
         output_channel = modelConfigs['output_channel']
-        num_embedding = modelConfigs['num_embedding']
+        self.num_embedding = modelConfigs['num_embedding']
         self.num_class = self.TrainingDataSetConfigs['n_classes']
         self.conditional = self.TrainingDataSetConfigs['conditional']
         useSigmoid = modelConfigs['pixelcnn_useSigmoid']
 
         self.w_recon, self.w_embedding, self.w_commitment = optimizerConfigs['w_recon'], optimizerConfigs['w_embedding'], optimizerConfigs['w_commitment']
 
-        self.vqvae_module = VQVAE(image_channel, inner_channel, output_channel, num_embedding, self.num_class, self.conditional)
+        self.vqvae_module = VQVAE(image_channel, inner_channel, output_channel, self.num_embedding, self.num_class, self.conditional)
         # self.pixelcnn_module = PixelCNN()
         # (self, num_input_c=1, num_inner_c=64, num_output_c=1, num_masked_convs=4, useSigmoid=True):
-        self.pixelcnn_module = PixelCNN_Embedding(num_input_c=inner_channel, num_inner_c=inner_channel, num_output_c=num_embedding, useSigmoid=useSigmoid,  num_embedding=num_embedding, conditional=self.conditional, n_classes=self.num_class)
+        self.pixelcnn_module = PixelCNN_Embedding(num_input_c=inner_channel, num_inner_c=inner_channel, num_output_c=self.num_embedding, useSigmoid=useSigmoid,  num_embedding=self.num_embedding, conditional=self.conditional, n_classes=self.num_class)
 
         # init self modules and optimizers
         self.optimizer_vqvae = torch.optim.Adam(params=self.vqvae_module.parameters(), 
@@ -1358,9 +1563,7 @@ class VQVAE_model(torch.nn.Module):
             latent_codes = torch.randint(0, C, latent_shape).to(self.device)
             label = torch.randint(0, self.num_class, (10, )).to(self.device)
             with torch.no_grad():
-                latent_codes = self.vqvae_module.embedding(latent_codes)
-                latent_codes = latent_codes.permute(0, 3, 1, 2)
-                img = self.vqvae_module.decoder(latent_codes)
+                img = self.vqvae_module.decode(latent_codes)
             img = img.view(test_data['image'].shape[0], digit_size, digit_size).cpu().numpy()
             for b in range(in_re_img.shape[0]):
                 tb_image[i * h_size: (i+1) * h_size, b * w_size: (b+1) * w_size] = img[b, :, :]
@@ -1409,6 +1612,7 @@ class VQVAE_model(torch.nn.Module):
 
             latent_samples_shape = [100] + [H, W] 
             latent_samples = torch.zeros(latent_samples_shape).to(self.device).long() # [100, 1, 7, 7]
+            latent_samples = torch.randint(0, self.num_embedding, latent_samples_shape).to(self.device).long() # [100, 1, 7, 7]
             label = torch.arange(0, 10).repeat(10, 1).transpose(1, 0).flatten() # [100, 1]
             label = F.one_hot(label, num_classes=self.num_class).float().to(self.device)
 
@@ -1426,7 +1630,6 @@ class VQVAE_model(torch.nn.Module):
                         pixel = torch.multinomial(prob_dist, 1)
                         latent_samples[:, i, j] = pixel[:, 0]
 
-
             samples = self.vqvae_module.decode(latent_samples)
         
         samples = samples.cpu().numpy().transpose(0, 2, 3, 1)
@@ -1439,6 +1642,10 @@ class VQVAE_model(torch.nn.Module):
 
         samples_flatten_img = np.clip(samples_flatten_img, 0.0, 1.0)
         tb_writer.add_image('generated_image'.format(epoch), samples_flatten_img, epoch, dataformats="HW")
+
+        if (epoch + 1) % self.save_model_interval == 0:
+            save_path = './expriments_save/{}/model_epoch_pixelCNN_{}.pth'.format(self.configs['Configuration_name'], epoch)
+            torch.save(self.pixelcnn_module.state_dict(), save_path)
 
 if __name__ == '__main__':
 

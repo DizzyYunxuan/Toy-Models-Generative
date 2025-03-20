@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 
 
 class MaskedConv2d(nn.Conv2d):
-    def __init__(self, input_num_c, output_num_c, kernel_size=5, padding=2, type='A', device='cuda'):
+    def __init__(self, input_num_c, output_num_c, kernel_size=5, padding=2, type='A', device='cuda', latent_size=7):
         super().__init__(input_num_c, output_num_c, [kernel_size, kernel_size], stride=1, padding=padding)
         h_masked_index = kernel_size // 2
         w_masked_index = kernel_size // 2
@@ -19,7 +19,8 @@ class MaskedConv2d(nn.Conv2d):
           self.mask[:,:, h_masked_index , w_masked_index+1:] = 0.0
         self.mask = self.mask.to(device)
 
-        self.label_emb = torch.nn.Linear(10, 28 * 28)
+        self.latent_size = latent_size
+        self.label_emb = torch.nn.Linear(10, self.latent_size * self.latent_size)
         # self.conv1x1 = torch.nn.Conv2d(1, output_num_c, 1)
 
 
@@ -28,7 +29,7 @@ class MaskedConv2d(nn.Conv2d):
         if condition is not None:
             with torch.no_grad():
                 self.weight.data *= self.mask
-            condition = self.label_emb(condition).view(-1, 1, 28, 28)
+            condition = self.label_emb(condition).view(-1, 1, self.latent_size, self.latent_size)
             # condition = self.conv1x1(condition)
             # condition = condition.unsqueeze(2)
             # condition = condition.unsqueeze(3)
@@ -40,18 +41,18 @@ class MaskedConv2d(nn.Conv2d):
             return super(MaskedConv2d, self).forward(x)
 
 class residualMaskedConv(nn.Module):
-    def __init__(self, input_num_dim, output_num_dim):
+    def __init__(self, input_num_dim, output_num_dim, latent_size):
         super().__init__()
 
         net0 = []
-        net0.append(torch.nn.Conv2d(input_num_dim, input_num_dim // 2, 1))
+        net0.append(torch.nn.Conv2d(input_num_dim, input_num_dim // 2, 3, padding=1))
         net0.append(torch.nn.ReLU())
         
-        self.conv0 = MaskedConv2d(input_num_dim // 2, input_num_dim // 2, 3, padding=1, type='B')
+        self.conv0 = MaskedConv2d(input_num_dim // 2, input_num_dim // 2, 3, padding=1, type='B', latent_size=latent_size)
         self.relu0 = torch.nn.ReLU()
 
         net2 = []
-        net2.append(torch.nn.Conv2d(input_num_dim // 2, output_num_dim, 1))
+        net2.append(torch.nn.Conv2d(input_num_dim // 2, output_num_dim, 3, padding=1))
         net2.append(torch.nn.ReLU())
 
         self.net0 = torch.nn.Sequential(*net0)
@@ -81,22 +82,22 @@ class residualMaskedConv(nn.Module):
 class PixelCNN(nn.Module):
     ##################
     ### Problem 2(b): Implement PixelCNN
-    def __init__(self, num_input_c=1, num_inner_c=64, num_output_c=1, num_masked_convs=4, useSigmoid=True, num_classes=10, conditional=False):
+    def __init__(self, num_input_c=1, num_inner_c=64, num_output_c=1, num_masked_convs=16, useSigmoid=True, num_classes=10, conditional=False, latent_size=7):
         super(PixelCNN, self).__init__()
         
         self.conditional = conditional
         self.useSigmoid = useSigmoid
-        self.mconv0 = MaskedConv2d(num_input_c, num_inner_c, 7, 3, 'A')
+        self.mconv0 = MaskedConv2d(num_input_c, num_inner_c, 3, 1, 'A', latent_size=latent_size)
         self.relu0 = torch.nn.LeakyReLU(0.1)
 
         net = []
         for i in range(num_masked_convs):
-          net.append(residualMaskedConv(num_inner_c, num_inner_c))
+          net.append(residualMaskedConv(num_inner_c, num_inner_c, latent_size=latent_size))
 
 
-        self.mconv1 = MaskedConv2d(num_inner_c, num_inner_c, 1, 0, 'B')
+        self.mconv1 = MaskedConv2d(num_inner_c, num_inner_c, 3, 1, 'B', latent_size=latent_size)
         self.relu1 = torch.nn.LeakyReLU(0.1)
-        self.mconv2 = MaskedConv2d(num_inner_c, num_output_c, 1, 0, 'B')
+        self.mconv2 = MaskedConv2d(num_inner_c, num_output_c, 3, 1, 'B', latent_size=latent_size)
         if self.useSigmoid:
             self.sigmoid = torch.nn.Sigmoid()
         
@@ -142,7 +143,7 @@ class PixelCNN(nn.Module):
         return x
 
 
-
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------
 class residualConditionalMaskedConv(nn.Module):
     def __init__(self, input_num_dim, output_num_dim):
         super().__init__()

@@ -25,10 +25,10 @@ def train(configs):
     total_epochs = configs['TrainingDataSetConfigs']['total_epochs']
     for epoch in tqdm(range(total_epochs), desc='Epochs'):
         train_batch_progress = tqdm(train_dataLoader, desc='Train_Batch', leave=False)
-        for iter_idx, train_data in enumerate(train_batch_progress):
-            model.feed_data(train_data)
-            model.optimize_parameters()
-            model.tb_write_losses(writer, epoch * len(train_batch_progress) + iter_idx)
+        # for iter_idx, train_data in enumerate(train_batch_progress):
+        #     model.feed_data(train_data)
+        #     model.optimize_parameters()
+        #     model.tb_write_losses(writer, epoch * len(train_batch_progress) + iter_idx)
 
         model.validation(writer, epoch, test_dataLoader)
               
@@ -54,9 +54,11 @@ def train(configs):
 # with open('train_config_diffusion.yaml') as f:
 #     configs = yaml.safe_load(f)
 
-with open('options/train/train_config_transformer.yaml') as f:
-    configs = yaml.safe_load(f)
+# with open('options/train/train_config_transformer.yaml') as f:
+#     configs = yaml.safe_load(f)
 
+with open('options/train/train_config_transformer_AR.yaml') as f:
+    configs = yaml.safe_load(f)
 
 
 train(configs)
