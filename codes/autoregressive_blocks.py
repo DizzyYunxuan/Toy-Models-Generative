@@ -20,7 +20,12 @@ class MaskedConv2d(nn.Conv2d):
         self.mask = self.mask.to(device)
 
         self.latent_size = latent_size
-        self.label_emb = torch.nn.Linear(10, self.latent_size * self.latent_size)
+        # self.label_emb = torch.nn.Linear(10, self.latent_size * self.latent_size)
+        self.label_emb = [torch.nn.Linear(10, 128), torch.nn.LeakyReLU(0.1)]
+        self.label_emb.append(torch.nn.Linear(128, 64))
+        self.label_emb.append(torch.nn.LeakyReLU(0.1))
+        self.label_emb.append(torch.nn.Linear(64, self.latent_size * self.latent_size))
+        self.label_emb = torch.nn.Sequential(*self.label_emb)
         # self.conv1x1 = torch.nn.Conv2d(1, output_num_c, 1)
 
 
